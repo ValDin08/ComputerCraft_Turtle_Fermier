@@ -15,14 +15,16 @@ Installation du programme :
 ---
 
 # Programme : Turtle Fermier
-## Version : 1.0
+## Version : 1.1
 
 ### Patchnote : 
 
-**1.0 : Version de base de la turtle bucheron  
+*1.0 : Version de base de la turtle bucheron  
 Rechargement et Déchargement automatique de la turtle.  
 Positionnement par GPS.  
-Mode manuel et automatique.**
+Mode manuel et automatique.*
+
+**1.1 : Gestion de l'inventaire fluidifiée.**
 
 ---
 > [!NOTE]
