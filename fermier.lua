@@ -1,25 +1,26 @@
 --Déclaration des variables
 	--Globales
 		local WorkingMode	=	""
+		local ProgramVersion	=	"1.2"
 	--Inventaire
 		--Inventaire flottant (S = Start / E = End)
-			local SSeeds		=	3	--Début du stock de graines
-			local ESeeds		=	6	--Fin du stock de graines
-			local SFuel		=	7	--Début du réservoir à carburant
-			local EFuel		=	8	--Fin du réservoir à carburant
-			local SHarvest		=	9	--Début du stock de récoltee
-			local EHarvest		=	16	--Fin du stock de récolte
+			local SSeeds	=	3	--Début du stock de graines
+			local ESeeds	=	6	--Fin du stock de graines
+			local SFuel	=	7	--Début du réservoir à carburant
+			local EFuel	=	8	--Fin du réservoir à carburant
+			local SHarvest	=	9	--Début du stock de récoltee
+			local EHarvest	=	16	--Fin du stock de récolte
 		--Inventaire fixe
-			local Harvester		=	1	--Emplacement de la récolte en cours
+			local Harvester	=	1	--Emplacement de la récolte en cours
 			
 		local InventoryNOK	=	0	--Inventaire pas prêt pour démarrage de la turtle
 		local InventoryNeeds	=	0	--Type de besoin de l'inventaire lors de la prochaine sortie (3 bits --> 1 = Graines à recharger / 10 = Carburant à recharger / 100 = Récoltes à déposer)
 			
 	--Mouvements
-		local FieldLength		=	27	--Longueur du champ géré
-		local FieldWidth		=	18	--Largeur du champ géré
-		local TypeOfMvmt		=	0	--Type de mouvement (0 = Stop / 1 = Avance normale / 2 = Virage gauche / 3 = Virage droit / 4 = guidage GPS)
-		local BottomBlock		=	0	--Bloc sous la turtle (0 = Vide / 1 = Récolte NOK / 2 = Récolte OK / 3 = Eau / 4 = Limite)
+		local FieldLength	=	27	--Longueur du champ géré
+		local FieldWidth	=	18	--Largeur du champ géré
+		local TypeOfMvmt	=	0	--Type de mouvement (0 = Stop / 1 = Avance normale / 2 = Virage gauche / 3 = Virage droit / 4 = guidage GPS)
+		local BottomBlock	=	0	--Bloc sous la turtle (0 = Vide / 1 = Récolte NOK / 2 = Récolte OK / 3 = Eau / 4 = Limite)
 		
 		--Coordonnées
 			local TurtleGPSPos	=	{0, 0, 0}		--Position GPS actuelle de la turle
@@ -136,7 +137,7 @@ end
 function GetStartLocation()
 	--Demande de démarrage manuel ou automatique
 	print("Fonctionnement 'auto' ou 'manu'?")
-	WorkingMode = read()
+	WorkingMode = string.lower(read())
 
 	if WorkingMode == "auto" then
 		--Acquisition de la position de départ
@@ -152,21 +153,15 @@ function GetStartLocation()
 		elseif (TurtleGPSPos[1]) < (TurtleStartPos[1]) then TurtleFacing = 4
 		end
 		turtle.back()
-		turtle.turnLeft()
-		turtle.turnRight()
-		turtle.turnRight()
-		turtle.turnLeft()
-		turtle.up()
-		turtle.down()
 	elseif WorkingMode == "manu" then
 		print("Entrez point de départ x.")
-		TurtleStartPos[1] = read()
+		TurtleStartPos[1] = tonumber(read())
 		print("Entrez point de départ y.")
-		TurtleStartPos[2] = read()
+		TurtleStartPos[2] = tonumber(read())
 		print("Entrez point de départ z.")
-		TurtleStartPos[3] = read()
+		TurtleStartPos[3] = tonumber(read())
 		print("Entrez orientation de départ : 1 = Nord, 2 = Sud, 3 = Est, 4 = Ouest.")
-		TurtleFacing = read()
+		TurtleFacing = tonumber(read())
 	end
 	print("Calibrage position terminée.")
 	GetGPSCurrentLoc()
@@ -207,11 +202,11 @@ function GetInWorkPosition()
 	elseif WorkingMode == "manu" then
 		local ManualCoordinates = {0, 0, 0}
 		print("Entrez coordonnée x cible. - INACTIF EN v2.0")
-		ManualCoordinates[1] = read()
+		ManualCoordinates[1] = tonumber(read())
 		print("Entrez coordonnée y cible.")
-		ManualCoordinates[2] = read()
+		ManualCoordinates[2] = tonumber(read())
 		print("Entrez coordonnée z cible. - INACTIF EN v2.0")
-		ManualCoordinates[3] = read()
+		ManualCoordinates[3] = tonumber(read())
 		
 		GetGPSCurrentLoc()
 		while not TurtleGPSPos[2] == ManualCoordinates[2] do
@@ -288,7 +283,7 @@ function ExitWorkZone()
 			end
 			InventoryNeeds = InventoryNeeds - 100
 			MoveBackward()
-			if InventoryNeeds > 0 then	TurnRight() else TurnLeft() end
+			if InventoryNeeds == 0 then TurnRight() else TurnLeft() end
 		end
 		
 		--Vérification besoin rechargement en carburant
@@ -482,6 +477,8 @@ function InventoryCheck()
 end
 
 --Programme
+
+print("Version programme : "..ProgramVersion)
 
 TurtleBooting()
 
