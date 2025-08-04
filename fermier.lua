@@ -1,17 +1,18 @@
 --Déclaration des variables
 	--Globales
-		local WorkingMode		=	""
+		local WorkingMode	=	""
 	--Inventaire
 		--Inventaire flottant (S = Start / E = End)
-			local SSeeds		=	1	--Début du stock de graines
+			local SSeeds		=	3	--Début du stock de graines
 			local ESeeds		=	6	--Fin du stock de graines
-			local SFuel			=	7	--Début du réservoir à carburant
-			local EFuel			=	8	--Fin du réservoir à carburant
+			local SFuel		=	7	--Début du réservoir à carburant
+			local EFuel		=	8	--Fin du réservoir à carburant
 			local SHarvest		=	9	--Début du stock de récoltee
 			local EHarvest		=	16	--Fin du stock de récolte
 		--Inventaire fixe
+			local Harvester		=	1	--Emplacement de la récolte en cours
 			
-		local InventoryNOK		=	0	--Inventaire pas prêt pour démarrage de la turtle
+		local InventoryNOK	=	0	--Inventaire pas prêt pour démarrage de la turtle
 		local InventoryNeeds	=	0	--Type de besoin de l'inventaire lors de la prochaine sortie (3 bits --> 1 = Graines à recharger / 10 = Carburant à recharger / 100 = Récoltes à déposer)
 			
 	--Mouvements
@@ -22,16 +23,16 @@
 		
 		--Coordonnées
 			local TurtleGPSPos	=	{0, 0, 0}		--Position GPS actuelle de la turle
-			local TurtleStartPos=	{-45, 66, 52}	--Position GPS de démarrage de la turtle
+			local TurtleStartPos	=	{-45, 66, 52}	--Position GPS de démarrage de la turtle
 			local TurtleExitPos	=	{0, 0, 0}		--Position GPS d'entrée/sortie de la zone de travail
 			local TurtleFacing	=	0				--Orientation de la turtle (1 = Nord / 2 = Sud / 3 = Est / 4 = Ouest)
 			local FuelChest		=	{-47, 66, 53}	--Position du coffre de carburant
 			local HarvestChest	=	{-47, 66, 50}	--Position du coffre de récoltes
 			local SeedsChest	=	{-43, 66, 52}	--Position du coffre des graines
-			local xLine			=	{-68, -40}		--Zone de travail x (min, max)
-			local zLine			=	{28, 47}		--Zone de travail z (min, max)
+			local xLine		=	{-68, -40}		--Zone de travail x (min, max)
+			local zLine		=	{28, 47}		--Zone de travail z (min, max)
 			
-			--Coins de la ferme (à gauche de la grille se situe le stand de retrait de la turtle)
+			--Grille des arbres (à gauche de la grille se situe le stand de retrait de la turtle)
 			local NorthEastCorner	=	{-41, 65, 29}
 			local NorthWestCorner	=	{-67, 65, 29}
 			local SouthEastCorner	=	{-41, 65, 46}
@@ -107,7 +108,8 @@ function TurtleBooting()
 	print("Carburant OK.")
 	
 	--Instructions de démarrage
-	print("Charger la turtle : 1 à 6 = max graines, 7 et 8 = max carburant.")
+	print("Charger la turtle : 3 à 6 = max graines, 7 et 8 = max carburant.")
+	print("!!LAISSER LES EMPLACEMENTS 1 ET 2 VIDES!!!")
 	print("Vérification du matériel nécessaire en cours.")
 	os.sleep(5)
 
@@ -231,9 +233,9 @@ function ExitWorkZone()
 	GetGPSCurrentLoc()
 	--Analyse de l'altitude
 	if TurtleGPSPos[2] > (TurtleStartPos[2]+1) then
-		while not TurtleGPSPos == (TurtleStartPos[2]+1) do MoveDown() end
+		while TurtleGPSPos > (TurtleStartPos[2]+1) do MoveDown() end
 	elseif TurtleGPSPos[2] < (TurtleStartPos[2]+1) then
-		while not TurtleGPSPos == (TurtleStartPos[2]+1) do MoveUp() end
+		while TurtleGPSPos < (TurtleStartPos[2]+1) do MoveUp() end
 	end
 	
 	--Vérification de l'orientation pour définir la rotation de sortie
@@ -259,12 +261,12 @@ function ExitWorkZone()
 	
 	--Vérification position x par rapport au point de sortie
 	GetGPSCurrentLoc()
-	if TurtleGPSPos[1] < TurtleExitPos[1] then
+	if TurtleGPSPos[1] > TurtleExitPos[1] then
 		TurnRight()
 		MoveForward(math.abs(TurtleGPSPos[1]-TurtleExitPos[1]))
 		TurnLeft()
 		MoveDown()
-	elseif TurtleGPSPos[1] > TurtleExitPos[1] then
+	elseif TurtleGPSPos[1] < TurtleExitPos[1] then
 		TurnLeft()
 		MoveForward(math.abs(TurtleGPSPos[1]-TurtleExitPos[1]))
 		TurnRight()
@@ -286,7 +288,7 @@ function ExitWorkZone()
 			end
 			InventoryNeeds = InventoryNeeds - 100
 			MoveBackward()
-			if not InventoryNeeds == 0 then	TurnLeft() else TurnRight() end
+			if InventoryNeeds > 0 then	TurnRight() else TurnLeft() end
 		end
 		
 		--Vérification besoin rechargement en carburant
@@ -307,7 +309,7 @@ function ExitWorkZone()
 		if InventoryNeeds == 1 then
 			GetGPSCurrentLoc()
 			MoveForward(math.abs(TurtleGPSPos[3]-SeedsChest[3]))
-			if TurtleFacing == 1 then TurnLeft() elseif TurtleFacing == 2 then TurnRight() end
+			if TurtleFacing == 1 then TurnRight() elseif TurtleFacing == 2 then TurnLeft() end
 			MoveForward(math.abs(TurtleGPSPos[1]-(SeedsChest[1]+1)))
 			for i=SSeeds,(ESeeds - 1) do
 				TransferIntoInventory(i)
@@ -380,10 +382,11 @@ function Movement()
 		MoveForward(1)
 		TurnRight()
 		MoveForward(1)
-	elseif (TurtleGPSPos[1] > (SouthEastCorner[1]+1) or TurtleGPSPos[1] < (SouthWestCorner[1]-1)) and TurtleGPSPos[3] = NorthEastCorner[3] then
+	elseif (TurtleGPSPos[1] > (SouthEastCorner[1]+1) or TurtleGPSPos[1] < (SouthWestCorner[1]-1)) and TurtleGPSPos[3] == NorthEastCorner[3] then
 		TurnRight()	
 		MoveForward(math.abs(TurtleGPSPos[3]-SouthEastCorner[3]))
 		TurnRight()
+		MoveForward(1)
 	else
 		CheckBottomBlock()
 		if TypeOfMvmt == 1 then MoveForward(1) end
@@ -392,24 +395,22 @@ end
 
 --RECOLTE ET REPLANTAGE
 function Harvest()
-	turtle.select(SHarvest)
+	turtle.select(Harvester)
 	--Récupération de la plante
 	turtle.digDown()
-	--Déplacement du stock turtle
-	for i=SHarvest,(EHarvest-1), 1 do
-		TransferIntraInventory(i, (i+1), turtle.getItemCount(i))
-	end
 	--Appel de la fonction de replantage
+	os.sleep(0.25)
 	Replant()
 end
 
 function Replant()
 	--Replantage de la pousse
-	turtle.select(SSeeds)
-	turtle.placeDown()
-	for i=ESeeds,(SSeeds+1), 1 do
-		TransferIntraInventory(i, (i-1), turtle.getItemCount(i))
+	if turtle.getItemCount(Harvester + 1) > 0 then 
+		turtle.select(Harvester) 
+	else 
+		turtle.select(SSeeds)
 	end
+	turtle.placeDown()
 end
 
 --RAVITAILLEMENT CARBURANT
@@ -438,18 +439,41 @@ function TransferExtraInventory(SlotFrom, Quantity)
 end
 
 function InventoryCheck()
+	--Déplacement des récoltes dans l'inventaire
+	if turtle.getItemCount(Harvester) > 0 then
+		for i=EHarvest,SHarvest, -1 do
+			if turtle.getItemCount(i) <= (64 - turtle.getItemCount(Harvester)) then
+				TransferIntraInventory(Harvester, i, turtle.getItemCount(Harvester))
+				break
+			end
+		end
+	end
+	
+	--Déplacement des graines dans l'inventaire
+	if turtle.getItemCount(Harvester + 1) > 0 then
+		for i=SSeeds,ESeeds, 1 do
+			if turtle.getItemCount(i) <= (64 - turtle.getItemCount(Harvester + 1)) then
+				TransferIntraInventory(Harvester + 1, i, turtle.getItemCount(Harvester + 1))
+				break
+			end
+		end
+	end
+	
 	--Vérification besoin de vider la récolte
 	if turtle.getItemCount(SHarvest) > 32 then
 		InventoryNeeds = InventoryNeeds + 100
 	end
+	
 	--Vérification besoin de récupérer du carburant
 	if turtle.getItemCount(SFuel) < 8 then
 		InventoryNeeds = InventoryNeeds + 10
 	end
-	--Vérification besoin de récupérer des pousses
+	
+	--Vérification besoin de récupérer des graines
 	if turtle.getItemCount(SSeeds) < 8 then
 		InventoryNeeds = InventoryNeeds + 1
 	end
+	
 	--Vidage de la boite à graines
 	if turtle.getItemCount(ESeeds) > 1 then
 		turtle.select(ESeeds)
