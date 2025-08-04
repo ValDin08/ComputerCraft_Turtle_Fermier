@@ -15,7 +15,7 @@ Installation du programme :
 ---
 
 # Programme : Turtle Fermier
-## Version : 1.1
+## Version : 1.2
 
 ### Patchnote : 
 
@@ -24,7 +24,10 @@ Rechargement et Déchargement automatique de la turtle.
 Positionnement par GPS.  
 Mode manuel et automatique.*
 
-**1.1 : Gestion de l'inventaire fluidifiée.**
+*1.1 : Gestion de l'inventaire fluidifiée.*
+
+**1.2 : Casse non prise en compte dans les entrées de strings.  
+Affichage de la version du programme au démarrage de la turtle.**
 
 ---
 > [!NOTE]
