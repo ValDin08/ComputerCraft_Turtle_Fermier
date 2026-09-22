@@ -1,38 +1,59 @@
 --Déclaration des variables
 	--Globales
-		local WorkingMode	=	""
-		local ProgramVersion	=	"1.2"
+		local WorkingMode		=	""
+		local ProgramVersion	=	"3.0-alpha01"
+		local TurtleFunction	=	"fermier"
+		local HarvestedHays		=	0		--Nombre de récoltes effectuées sur la run en cours
+		local ErrorDetected		=	false	--Erreur détectée
+		local Error				=	""		--Erreur remontée par la Turtle
+		local InCycle			=	false	--Turtle en production
+
+	--Réseau
+		local ServerID			=	12					--ID du serveur
+		local ModemSide			=	"right"				--Côté du modem sur la turtle (à vérifier selon le câblage réel)
+		local ServerConnected	=	false				--Serveur atteignable et connecté à la turtle
+		local ServerAuthorized	=	false				--Serveur connecté à la turtle et autorisant le travail
+		local CurrentFuelLevel	=	0					--Niveau de carburant actuel
+		local PixelLink			=	require("PixelLink")
+
 	--Inventaire
 		--Inventaire flottant (S = Start / E = End)
 			local SSeeds	=	3	--Début du stock de graines
 			local ESeeds	=	6	--Fin du stock de graines
-			local SFuel	=	7	--Début du réservoir à carburant
-			local EFuel	=	8	--Fin du réservoir à carburant
-			local SHarvest	=	9	--Début du stock de récoltee
+			local SFuel		=	7	--Début du réservoir à carburant
+			local EFuel		=	8	--Fin du réservoir à carburant
+			local SHarvest	=	9	--Début du stock de récolte
 			local EHarvest	=	16	--Fin du stock de récolte
 		--Inventaire fixe
-			local Harvester	=	1	--Emplacement de la récolte en cours
-			
+			local Harvester	=	1	--Emplacement de la récolte en cours (blé) ; Harvester+1 = graines collectées
+
 		local InventoryNOK	=	0	--Inventaire pas prêt pour démarrage de la turtle
-		local InventoryNeeds	=	0	--Type de besoin de l'inventaire lors de la prochaine sortie (3 bits --> 1 = Graines à recharger / 10 = Carburant à recharger / 100 = Récoltes à déposer)
-			
+		-- Besoins d'inventaire à la prochaine sortie, recalculés à chaque InventoryCheck()
+		local NeedHarvestDrop	=	false	-- Besoin de déposer la récolte
+		local NeedFuel			=	false	-- Besoin de récupérer du carburant
+		local NeedSeeds			=	false	-- Besoin de récupérer des graines
+		-- Besoins forcés par le serveur (commande tactile), appliqués à la prochaine sortie puis effacés
+		local ForcedNeedHarvestDrop	=	false
+		local ForcedNeedFuel			=	false
+		local LastAppliedCommandID		=	nil	-- Dernière commande serveur appliquée (évite de la réappliquer en boucle)
+
 	--Mouvements
 		local FieldLength	=	27	--Longueur du champ géré
 		local FieldWidth	=	18	--Largeur du champ géré
 		local TypeOfMvmt	=	0	--Type de mouvement (0 = Stop / 1 = Avance normale / 2 = Virage gauche / 3 = Virage droit / 4 = guidage GPS)
 		local BottomBlock	=	0	--Bloc sous la turtle (0 = Vide / 1 = Récolte NOK / 2 = Récolte OK / 3 = Eau / 4 = Limite)
-		
+
 		--Coordonnées
-			local TurtleGPSPos	=	{0, 0, 0}		--Position GPS actuelle de la turle
+			local TurtleGPSPos		=	{0, 0, 0}		--Position GPS actuelle de la turle
 			local TurtleStartPos	=	{-45, 66, 52}	--Position GPS de démarrage de la turtle
-			local TurtleExitPos	=	{0, 0, 0}		--Position GPS d'entrée/sortie de la zone de travail
-			local TurtleFacing	=	0				--Orientation de la turtle (1 = Nord / 2 = Sud / 3 = Est / 4 = Ouest)
-			local FuelChest		=	{-47, 66, 53}	--Position du coffre de carburant
-			local HarvestChest	=	{-47, 66, 50}	--Position du coffre de récoltes
-			local SeedsChest	=	{-43, 66, 52}	--Position du coffre des graines
-			local xLine		=	{-68, -40}		--Zone de travail x (min, max)
-			local zLine		=	{28, 47}		--Zone de travail z (min, max)
-			
+			local TurtleExitPos		=	{0, 0, 0}		--Position GPS d'entrée/sortie de la zone de travail
+			local TurtleFacing		=	0				--Orientation de la turtle (1 = Nord / 2 = Sud / 3 = Est / 4 = Ouest)
+			local FuelChest			=	{-47, 66, 53}	--Position du coffre de carburant
+			local HarvestChest		=	{-47, 66, 50}	--Position du coffre de récoltes
+			local SeedsChest		=	{-43, 66, 52}	--Position du coffre des graines
+			local xLine				=	{-68, -40}		--Zone de travail x (min, max)
+			local zLine				=	{28, 47}		--Zone de travail z (min, max)
+
 			--Grille des arbres (à gauche de la grille se situe le stand de retrait de la turtle)
 			local NorthEastCorner	=	{-41, 65, 29}
 			local NorthWestCorner	=	{-67, 65, 29}
@@ -99,15 +120,43 @@ function GetGPSCurrentLoc()
 	return TurtleGPSPos
 end
 
+--GESTION DU CARBURANT
+function FuelManagement()
+	CurrentFuelLevel = turtle.getFuelLevel()
+	if CurrentFuelLevel < 100 then
+		return Refuel()
+	end
+	return false, ""
+end
+
+function Refuel()
+	print("Ravitaillement turtle en cours...")
+	turtle.select(SFuel)
+	local succes = turtle.refuel(turtle.getItemCount(SFuel))
+	--Vérification si le ravitaillement s'est correctement passé
+	if succes then
+		TransferIntraInventory(EFuel, SFuel, turtle.getItemCount(EFuel))
+		return false, ""
+	else
+		return true, "Ravitaillement échoué"
+	end
+end
+
 --PHASE DE DEMARRAGE DE LA TURTLE
 function TurtleBooting()
 	print("Vérification carburant de la turtle...")
 	--Rechargement en carburant de la turtle
-	if (turtle.getFuelLevel() < 100) then
-		Refuel()
+	ErrorDetected, Error = FuelManagement()
+
+	if not ErrorDetected then
+		print("Carburant OK.")
+	else
+		print(Error)
+		print("Ravitaillement impossible, le système redémarrera dans 5 secondes.")
+		os.sleep(5)
+		os.reboot()
 	end
-	print("Carburant OK.")
-	
+
 	--Instructions de démarrage
 	print("Charger la turtle : 3 à 6 = max graines, 7 et 8 = max carburant.")
 	print("!!LAISSER LES EMPLACEMENTS 1 ET 2 VIDES!!!")
@@ -115,7 +164,7 @@ function TurtleBooting()
 	os.sleep(5)
 
 	--Vérification inventaire
-	if (turtle.getItemCount(SSeeds) < 5) then
+	if (turtle.getItemCount(SSeeds) < 5) or (InventoryMonitor(SFuel, EFuel) == 0) then
 		print("Chargez la turtle, le système redémarrera dans 5 secondes.")
 		os.sleep(5)
 		os.reboot()
@@ -129,7 +178,7 @@ function TurtleBooting()
 	end
 
 	os.sleep(10)
-	
+
 	GetInWorkPosition()
 	os.sleep(2)
 end
@@ -145,7 +194,12 @@ function GetStartLocation()
 		print("Calibrage position en cours...")
 		--Acquisition de l'orientation initiale de la turtle
 		TurtleStartPos = TurtleGPSPos
-		turtle.forward()
+		--Déplacement obligatoire pour déduire l'orientation : on dégage l'obstacle éventuel plutôt que de rester bloqué
+		while not turtle.forward() do
+			print("Calibrage bloqué par un obstacle, dégagement en cours...")
+			turtle.dig()
+			os.sleep(1)
+		end
 		GetGPSCurrentLoc()
 		if     (TurtleGPSPos[3]) < (TurtleStartPos[3]) then TurtleFacing = 1
 		elseif (TurtleGPSPos[3]) > (TurtleStartPos[3]) then TurtleFacing = 2
@@ -166,7 +220,7 @@ function GetStartLocation()
 	print("Calibrage position terminée.")
 	GetGPSCurrentLoc()
 	os.sleep(2)
-	
+
 end
 
 function GetInWorkPosition()
@@ -186,19 +240,19 @@ function GetInWorkPosition()
 		else
 			MoveForward(math.abs(TurtleGPSPos[1] - xLine[2]))
 		end
-		
+
 		--Mémorisation du point d'entrée/sortie de la zone de travail
 		GetGPSCurrentLoc()
 		TurtleExitPos = TurtleGPSPos
-		
+
 		--Déplacement vers coin sud est pour démarrage cycle de récolte
 		TurnRight()
 		MoveForward(math.abs(TurtleGPSPos[1]-SouthEastCorner[1]))
 		MoveForward(1)
-		TurnLeft()	
+		TurnLeft()
 		MoveForward(math.abs(TurtleGPSPos[3]-SouthEastCorner[3]))
 		TurnLeft()
-		
+
 	elseif WorkingMode == "manu" then
 		local ManualCoordinates = {0, 0, 0}
 		print("Entrez coordonnée x cible. - INACTIF EN v2.0")
@@ -207,19 +261,21 @@ function GetInWorkPosition()
 		ManualCoordinates[2] = tonumber(read())
 		print("Entrez coordonnée z cible. - INACTIF EN v2.0")
 		ManualCoordinates[3] = tonumber(read())
-		
+
 		GetGPSCurrentLoc()
-		while not TurtleGPSPos[2] == ManualCoordinates[2] do
-			if TurtleGPSPos < ManualCoordinates[2] then MoveUp() else MoveDown() end
+		while TurtleGPSPos[2] ~= ManualCoordinates[2] do
+			if TurtleGPSPos[2] < ManualCoordinates[2] then MoveUp() else MoveDown() end
 		end
-		
+
 		print("Placement manuel autre que 'y' inactif en v2.0, patientez...")
 		os.sleep(2)
-		
-	elseif WorkingMode == "hold" then 
-		os.sleep(2) 
+
+	elseif WorkingMode == "hold" then
+		os.sleep(2)
 	end
-		
+
+	InCycle = true
+
 end
 
 --SORTIE DE LA TURTLE
@@ -228,13 +284,13 @@ function ExitWorkZone()
 	GetGPSCurrentLoc()
 	--Analyse de l'altitude
 	if TurtleGPSPos[2] > (TurtleStartPos[2]+1) then
-		while TurtleGPSPos > (TurtleStartPos[2]+1) do MoveDown() end
+		while TurtleGPSPos[2] > (TurtleStartPos[2]+1) do MoveDown() end
 	elseif TurtleGPSPos[2] < (TurtleStartPos[2]+1) then
-		while TurtleGPSPos < (TurtleStartPos[2]+1) do MoveUp() end
+		while TurtleGPSPos[2] < (TurtleStartPos[2]+1) do MoveUp() end
 	end
-	
+
 	--Vérification de l'orientation pour définir la rotation de sortie
-	if TurtleFacing == 1 then 
+	if TurtleFacing == 1 then
 		TurnLeft()
 		TurnLeft()
 	elseif TurtleFacing == 4 then
@@ -242,18 +298,18 @@ function ExitWorkZone()
 	elseif TurtleFacing == 3 then
 		TurnRight()
 	end
-	
+
 	--Vérification si pas d'entrave devant la turtle, sinon, avance jusqu'à zLine[2]
 	while turtle.detect() do
 		TurnRight()
 		MoveForward(1)
 		TurnLeft()
 	end
-	
+
 	--Réacquisition position GPS et déplacement vers zLine[2]
 	GetGPSCurrentLoc()
 	MoveForward(math.abs(TurtleGPSPos[3]-TurtleExitPos[3]))
-	
+
 	--Vérification position x par rapport au point de sortie
 	GetGPSCurrentLoc()
 	if TurtleGPSPos[1] > TurtleExitPos[1] then
@@ -267,13 +323,13 @@ function ExitWorkZone()
 		TurnRight()
 		MoveDown()
 	end
-	
+
 	--Si la turtle est au point de sortie, alors sortie autorisée
 	GetGPSCurrentLoc()
-	--Actions en dehors de la zone 
-	if InventoryNeeds > 0 then
+	--Actions en dehors de la zone
+	if NeedHarvestDrop or NeedFuel or NeedSeeds then
 		--Vérification besoin de dépose des récoltes
-		if InventoryNeeds >= 100 then
+		if NeedHarvestDrop then
 			GetGPSCurrentLoc()
 			MoveForward(math.abs(TurtleGPSPos[3]-(HarvestChest[3])))
 			TurnRight()
@@ -281,13 +337,19 @@ function ExitWorkZone()
 			for i=SHarvest,EHarvest do
 				TransferExtraInventory(i, turtle.getItemCount(i))
 			end
-			InventoryNeeds = InventoryNeeds - 100
+			if InventoryMonitor(SHarvest,EHarvest) > 0 then
+				ErrorDetected = true
+				Error = "Coffre de récolte plein, dépose incomplète"
+				print(Error)
+			end
+			NeedHarvestDrop = false
+			ForcedNeedHarvestDrop = false
 			MoveBackward()
-			if InventoryNeeds == 0 then TurnRight() else TurnLeft() end
+			if not (NeedFuel or NeedSeeds) then TurnRight() else TurnLeft() end
 		end
-		
+
 		--Vérification besoin rechargement en carburant
-		if InventoryNeeds >= 10 then
+		if NeedFuel then
 			GetGPSCurrentLoc()
 			MoveForward(math.abs(TurtleGPSPos[3]-(FuelChest[3])))
 			TurnRight()
@@ -295,13 +357,19 @@ function ExitWorkZone()
 			for i=SFuel,EFuel do
 				TransferIntoInventory(i)
 			end
-			InventoryNeeds = InventoryNeeds - 10
+			if InventoryMonitor(SFuel,EFuel) < 8 then
+				ErrorDetected = true
+				Error = "Coffre de carburant vide ou insuffisant"
+				print(Error)
+			end
+			NeedFuel = false
+			ForcedNeedFuel = false
 			MoveBackward()
 			TurnRight()
 		end
-		
-		--Vérification besoin rechargement en pousses
-		if InventoryNeeds == 1 then
+
+		--Vérification besoin rechargement en graines
+		if NeedSeeds then
 			GetGPSCurrentLoc()
 			MoveForward(math.abs(TurtleGPSPos[3]-SeedsChest[3]))
 			if TurtleFacing == 1 then TurnRight() elseif TurtleFacing == 2 then TurnLeft() end
@@ -309,14 +377,30 @@ function ExitWorkZone()
 			for i=SSeeds,(ESeeds - 1) do
 				TransferIntoInventory(i)
 			end
-			InventoryNeeds = InventoryNeeds - 1
+			if InventoryMonitor(SSeeds,ESeeds - 1) < 8 then
+				ErrorDetected = true
+				Error = "Coffre de graines vide ou insuffisant"
+				print(Error)
+			end
+			NeedSeeds = false
 			MoveBackward()
 			TurnLeft()
 		end
+	elseif not ServerAuthorized then
+		MoveForward(math.abs(TurtleGPSPos[3]-TurtleStartPos[3]))
+		TurnLeft()
+		TurnLeft()
 	end
-	
-	--Retour à la position de travail
-	GetInWorkPosition()
+
+	--Signal hors cycle
+	InCycle = false
+
+	--Retour à la position de travail, uniquement si l'autorisation est toujours valide
+	while not ServerAuthorized do
+		AuthFromServer()
+	end
+
+	if ServerAuthorized then GetInWorkPosition() end
 end
 
 --ANALYSE DE L'ENVIRONNEMENT
@@ -333,7 +417,7 @@ function CheckBottomBlock()
 		TypeOfMvmt = 1
 	end
 	--Réacquisition de la position GPS
-	GetGPSCurrentLoc()	
+	GetGPSCurrentLoc()
 end
 
 function CheckWorkZoneLimits()
@@ -354,12 +438,12 @@ function CheckWorkZoneLimits()
 		if TurtleGPSPos[1] < xLine[1] then
 			MoveBackward()
 			TurnLeft()
-		end	
+		end
 	else
 		if TurtleGPSPos[1] > xLine[2] then
 			MoveBackward()
 			TurnLeft()
-		end	
+		end
 	end
 end
 
@@ -378,14 +462,14 @@ function Movement()
 		TurnRight()
 		MoveForward(1)
 	elseif (TurtleGPSPos[1] > (SouthEastCorner[1]+1) or TurtleGPSPos[1] < (SouthWestCorner[1]-1)) and TurtleGPSPos[3] == NorthEastCorner[3] then
-		TurnRight()	
+		TurnRight()
 		MoveForward(math.abs(TurtleGPSPos[3]-SouthEastCorner[3]))
 		TurnRight()
 		MoveForward(1)
 	else
 		CheckBottomBlock()
 		if TypeOfMvmt == 1 then MoveForward(1) end
-	end	
+	end
 end
 
 --RECOLTE ET REPLANTAGE
@@ -396,31 +480,33 @@ function Harvest()
 	--Appel de la fonction de replantage
 	os.sleep(0.25)
 	Replant()
+	HarvestedHays = HarvestedHays + 1
 end
 
 function Replant()
-	--Replantage de la pousse
-	if turtle.getItemCount(Harvester + 1) > 0 then 
-		turtle.select(Harvester) 
-	else 
+	--Replantage : utilise en priorité les graines récupérées à la récolte (Harvester+1), sinon la réserve (SSeeds)
+	if turtle.getItemCount(Harvester + 1) > 0 then
+		turtle.select(Harvester + 1)
+	else
 		turtle.select(SSeeds)
 	end
 	turtle.placeDown()
 end
 
---RAVITAILLEMENT CARBURANT
-function Refuel()
-	print("Ravitaillement turtle en cours...")
-	turtle.select(SFuel)
-	turtle.refuel(turtle.getItemCount(SFuel))
-	TransferIntraInventory(EFuel, SFuel, turtle.getItemCount(EFuel))
-	os.sleep(1)
+--GESTION DE L'INVENTAIRE
+function InventoryMonitor(StartSlot, EndSlot)
+	local ItemCount = 0
+	for i=StartSlot, EndSlot, 1 do
+		ItemCount = ItemCount + turtle.getItemCount(i)
+	end
+	return ItemCount
 end
 
---GESTION DE L'INVENTAIRE
 function TransferIntoInventory(SlotTo)
 	turtle.select(SlotTo)
-	turtle.suck(64-turtle.getItemCount())
+	local before = turtle.getItemCount(SlotTo)
+	turtle.suck(64-before)
+	return turtle.getItemCount(SlotTo) > before
 end
 
 function TransferIntraInventory(SlotFrom,SlotTo, Quantity)
@@ -443,7 +529,7 @@ function InventoryCheck()
 			end
 		end
 	end
-	
+
 	--Déplacement des graines dans l'inventaire
 	if turtle.getItemCount(Harvester + 1) > 0 then
 		for i=SSeeds,ESeeds, 1 do
@@ -453,43 +539,168 @@ function InventoryCheck()
 			end
 		end
 	end
-	
-	--Vérification besoin de vider la récolte
-	if turtle.getItemCount(SHarvest) > 32 then
-		InventoryNeeds = InventoryNeeds + 100
-	end
-	
-	--Vérification besoin de récupérer du carburant
-	if turtle.getItemCount(SFuel) < 8 then
-		InventoryNeeds = InventoryNeeds + 10
-	end
-	
-	--Vérification besoin de récupérer des graines
-	if turtle.getItemCount(SSeeds) < 8 then
-		InventoryNeeds = InventoryNeeds + 1
-	end
-	
-	--Vidage de la boite à graines
+
+	--Recalcul complet des besoins à chaque passage (évite toute dérive si un besoin précédent n'a
+	--pas pu être totalement comblé), en tenant compte des demandes forcées par le serveur (IHM tactile)
+	local HarvestQty = InventoryMonitor(SHarvest, EHarvest)
+	NeedHarvestDrop = (HarvestQty > ((EHarvest - SHarvest + 1) * 32)) or ForcedNeedHarvestDrop
+	NeedFuel        = (InventoryMonitor(SFuel, EFuel) < 8) or ForcedNeedFuel
+	--Le slot ESeeds sert de trop-plein jeté au sol ci-dessous : on ne le compte pas dans la réserve utile
+	NeedSeeds       = InventoryMonitor(SSeeds, ESeeds - 1) < 8
+
+	--Vidage de la boite à graines (trop-plein)
 	if turtle.getItemCount(ESeeds) > 1 then
 		turtle.select(ESeeds)
 		turtle.drop()
 	end
 end
 
+--PIXELLINK
+	--Connexion au serveur
+	function ConnectToServer()
+		local payload = {}
+		ServerConnected = PixelLink.request("connect", "turtle", ServerID, payload)
+		if ServerConnected then print("Serveur connecté") else print("Serveur déconnecté") end
+	end
+
+	--Envoi du statut de la turtle
+	function StatusToServer()
+		local SeedsQty = InventoryMonitor(SSeeds,ESeeds)
+		local FuelQty = InventoryMonitor(SFuel,EFuel)
+		local HarvestQty = InventoryMonitor(SHarvest,EHarvest)
+		local payload = {
+			turtleType  = TurtleFunction,
+			pos         = TurtleGPSPos,
+			orientation = TurtleFacing,
+			fuel        = turtle.getFuelLevel() + FuelQty,
+			running     = InCycle,
+			cycles      = HarvestedHays,
+			inventory   = {
+				rawMaterial       = SeedsQty,
+				harvestedMaterial = HarvestQty,
+				misc              = 0
+				},
+			errors        = {Error},
+			ackCommandId  = LastAppliedCommandID, -- Accusé de réception de la dernière commande serveur appliquée
+			extra         = {}
+
+			}
+		PixelLink.send("status", "turtle", ServerID, payload)
+	end
+
+	--Demande d'autorisation de travail
+	function AuthFromServer()
+		local payload = {
+			turtleType          = TurtleFunction,
+			pos                 = TurtleGPSPos,
+			orientation         = TurtleFacing,
+			serverAuthorization = ServerAuthorized
+		}
+		local ok, payload = PixelLink.request("auth", "turtle", ServerID, payload)
+		ServerConnected = ok
+		if payload and type(payload) == "table" and payload.authorization ~= nil then
+			ServerAuthorized = payload.authorization
+
+		else
+			ServerAuthorized = false
+
+		end
+
+		--Traitement d'une éventuelle commande forcée par le serveur (boutons tactiles de l'IHM).
+		--Le filtrage par ID évite de la réappliquer à chaque interrogation tant que le serveur
+		--n'a pas accusé réception via StatusToServer (ackCommandId).
+		if payload and type(payload) == "table" and payload.command and payload.command.id ~= LastAppliedCommandID then
+			local cmd = payload.command
+			if cmd.type == "forceRefuel" then
+				ForcedNeedFuel = true
+				print("Commande serveur reçue : ravitaillement forcé")
+
+			elseif cmd.type == "forceEmpty" then
+				ForcedNeedHarvestDrop = true
+				print("Commande serveur reçue : vidage forcé")
+
+			elseif cmd.type == "resync" then
+				print("Commande serveur reçue : resynchronisation")
+				ConnectToServer()
+				StatusToServer()
+
+			end
+			LastAppliedCommandID = cmd.id
+		end
+
+		if ServerConnected and ServerAuthorized then
+			print("Serveur connecté, autorisation de travailler")
+
+		elseif ServerConnected and not ServerAuthorized then
+			print("Serveur connecté, interdiction de travailler")
+
+		else
+			print("Serveur déconnecté, révocation de l'autorisation de travailler")
+
+		end
+
+	end
+
+--FONCTIONS PARALLELES
+	--Programme de récolte
+	function Farming()
+		while ServerConnected do
+			FuelManagement()
+			InventoryCheck()
+			AuthFromServer()
+
+			if not (NeedHarvestDrop or NeedFuel or NeedSeeds) and ServerAuthorized then
+				Movement()
+				StatusToServer()
+
+			else
+				ExitWorkZone()
+
+			end
+
+			if not ServerAuthorized then
+				print("Autorisation refusée, attente 5s avant nouvelle demande.")
+				os.sleep(5)
+			end
+
+		end
+
+		if not ServerConnected then print("Connexion au serveur perdue, tentative de reconnexion...") end
+
+	end
+
 --Programme
-
 print("Version programme : "..ProgramVersion)
+--Ouverture de la connexion au réseau RedNET
+if PixelLink then
+	rednet.open(ModemSide)
 
-TurtleBooting()
+	while true do
+		while not ServerConnected do
+			ConnectToServer()
+			if not ServerConnected then
+				print("Serveur inaccessible, nouvelle tentative dans 10s.")
+				os.sleep(10)
+			end
+		end
 
-while true do
-	if (turtle.getFuelLevel() < 100) then
-		Refuel()
+		print("Serveur connecté, demande d'autorisation de travail...")
+		repeat
+			AuthFromServer()
+			if not ServerAuthorized then
+				print("Autorisation refusée, attente 5s avant nouvelle demande.")
+				os.sleep(5)
+			end
+		until ServerAuthorized
+
+		TurtleBooting()
+		print("Turtle prête, lancement du programme fermier !")
+
+		Farming()  -- sort si ServerConnected devient false (perte connexion)
 	end
-	InventoryCheck()
-	if InventoryNeeds == 0 then
-		Movement()
-	else
-		ExitWorkZone()
-	end
+
+else
+	print("PixelLink manquant, impossible de démarrer la turtle. Installez le module PixelLink, puis redémarrez la turtle")
+	os.sleep()
+
 end
