@@ -1,7 +1,7 @@
 --Déclaration des variables
 	--Globales
 		local WorkingMode		=	""
-		local ProgramVersion	=	"3.0-alpha01"
+		local ProgramVersion	=	"3.0-alpha02"
 		local TurtleFunction	=	"fermier"
 		local HarvestedHays		=	0		--Nombre de récoltes effectuées sur la run en cours
 		local ErrorDetected		=	false	--Erreur détectée
@@ -520,8 +520,15 @@ function TransferExtraInventory(SlotFrom, Quantity)
 end
 
 function InventoryCheck()
+	-- Seuil de déclenchement du transfert (turtle.transferTo() passe par la même file de commandes
+	-- que les actions physiques, donc a un coût réel par appel — pas la peine de trier dès qu'il y a
+	-- ne serait-ce qu'un seul item : le blé mûr est dense, ça viderait le slot à quasiment chaque
+	-- itération. On attend qu'il soit presque plein, avec largement assez de marge pour ne jamais
+	-- déborder entre deux passages (au plus une récolte par itération).
+	local TransferThreshold = 48
+
 	--Déplacement des récoltes dans l'inventaire
-	if turtle.getItemCount(Harvester) > 0 then
+	if turtle.getItemCount(Harvester) > TransferThreshold then
 		for i=EHarvest,SHarvest, -1 do
 			if turtle.getItemCount(i) <= (64 - turtle.getItemCount(Harvester)) then
 				TransferIntraInventory(Harvester, i, turtle.getItemCount(Harvester))
@@ -531,7 +538,7 @@ function InventoryCheck()
 	end
 
 	--Déplacement des graines dans l'inventaire
-	if turtle.getItemCount(Harvester + 1) > 0 then
+	if turtle.getItemCount(Harvester + 1) > TransferThreshold then
 		for i=SSeeds,ESeeds, 1 do
 			if turtle.getItemCount(i) <= (64 - turtle.getItemCount(Harvester + 1)) then
 				TransferIntraInventory(Harvester + 1, i, turtle.getItemCount(Harvester + 1))

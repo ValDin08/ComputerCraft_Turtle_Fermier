@@ -20,7 +20,7 @@ Installation du programme :
 ---
 
 # Programme : Turtle Fermier
-## Version : 3.0-alpha01
+## Version : 3.0-alpha02
 ### Génération : Lumen 🔆
 
 ### 🚀 Générations
@@ -53,7 +53,7 @@ Affichage de la version du programme au démarrage de la turtle.*
 
 </details>
 
-**3.0-alpha01 : Intégration complète de la communication réseau via PixelLink (la turtle tournait jusque là en totale autonomie, sans aucun serveur).  
+*3.0-alpha01 : Intégration complète de la communication réseau via PixelLink (la turtle tournait jusque là en totale autonomie, sans aucun serveur).  
 Ajout de la connexion au serveur, de la demande d'autorisation de travail et de l'envoi de statut à chaque cycle.  
 Ajout du ravitaillement/dépôt en cours de route (carburant, graines, récolte), avec retour exact à la position de reprise du forage.  
 Ajout de la prise en charge des commandes forcées depuis l'écran serveur (ravitaillement, vidage, resynchronisation), avec accusé de réception fiable.  
@@ -61,7 +61,9 @@ Correction d'un bug critique dans `ExitWorkZone` : une comparaison manquant un i
 Correction du replantage : une graine issue de la récolte n'était jamais utilisée pour replanter à cause d'une mauvaise sélection de slot, la case restait donc vide.  
 Correction du mode "manu" (bug de précédence qui empêchait toute correction d'altitude, et comparaison table/nombre similaire au bug ci-dessus).  
 Correction de la remontée d'erreurs de ravitaillement, et arrêt réel de la turtle en cas d'échec au démarrage.  
-Correction du déclencheur de dépose de la récolte, basé désormais sur le stock total plutôt qu'un seul slot.**
+Correction du déclencheur de dépose de la récolte, basé désormais sur le stock total plutôt qu'un seul slot.*
+
+*3.0-alpha02 : Relèvement des seuils de déclenchement du tri/dépose (récolte et graines), pour réduire la fréquence des `turtle.transferTo()`, coûteux en temps d'exécution, et fluidifier le fonctionnement de la turtle.*
 
 ---
 > [!NOTE]
